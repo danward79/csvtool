@@ -36,6 +36,7 @@ func main() {
 	inputFile := flag.String("i", "", "Input CSV file")
 	outputFile := flag.String("o", "", "Output CSV file")
 	timeSpan := flag.String("t", "", "Span of time records, eg 10:00:00-16:00:00")
+	recordSpan := flag.String("r", "", "Span index of records to export, eg 1-5 or 1,3-10 etc")
 	columns := flag.String("c", "", "Which columns to export, eg 1-5 or 1,3-10 etc")
 	limitColumn := flag.Int("specific", -1, "Limit search to a specific column x, default all (slow)")
 	header := flag.Bool("header", false, "include header row")
@@ -45,10 +46,6 @@ func main() {
 	ignoreBlanks := flag.Int("blanks", -1, "Ignore records if this column is blank")
 	help := flag.Bool("help", false, "help for guidance on usage")
 	flag.Parse()
-
-	if *help {
-		printUsage("")
-	}
 
 	//Open input file and if not use os.Stdin (got this idea from mandolyte)
 	var r *csv.Reader
@@ -97,26 +94,38 @@ func main() {
 			log.Fatal("Columnlist Error:", err)
 		}
 		sort.Sort(cl)
-
 	}
 
-	//Sort out the specified timeRange
-	if *timeSpan != "" {
+	//keep the header
+	if *header {
+		writeHeader(r, w, cl)
+	}
+
+	switch {
+	case *recordSpan != "": //If a record range was specified generate a list of records to capture
+		rl, min, max := generateRangeMap(*recordSpan)
+		parseForRange(r, w, rl, min, max, cl, *ignoreBlanks)
+
+	case *timeSpan != "": //Sort out the specified timeRange
 		tr, err := formatTimeSpan(*timeSpan)
 		if err != nil {
 			log.Fatal("Parse Time Error:", err)
 		}
-
 		sort.Sort(tr)
+		parseForTime(r, w, tr, *limitColumn, cl, *ignoreBlanks)
 
-		parseForTime(r, w, tr, *limitColumn, *header, cl, *ignoreBlanks)
+	case *help:
+		printUsage("Tool Usage:")
+
+	default:
+		printUsage("Tool Usage:")
 	}
 }
 
-//parseForTime exports for a specified time range from - to
-func parseForTime(r *csv.Reader, w *csv.Writer, tr timeRange, column int, header bool, cl intList, ignBlks int) {
+//parseForRange returns a range of records
+func parseForRange(r *csv.Reader, w *csv.Writer, rl map[int64]bool, min int64, max int64, cl intList, ignBlks int) {
 
-	count := int64(0)
+	var count int64
 
 	for {
 		record, err := r.Read()
@@ -127,18 +136,49 @@ func parseForTime(r *csv.Reader, w *csv.Writer, tr timeRange, column int, header
 			log.Fatal("Error Reading CSV:", err)
 		}
 
-		//Keep the header
-		if header && count == 0 {
+		//stop iterating of we've done the work we need too.
+		if count < min {
+			count++
+			continue
+		} else if count > max {
+			return
+		}
+
+		//record in range list (rl)
+		if _, ok := rl[count]; ok {
+
+			if ignBlks >= 0 {
+				if record[ignBlks] == "" {
+					count++
+					continue
+				}
+			}
+
 			if len(cl) > 0 {
 				record = remarshallRecord(record, cl)
 			}
 			writeRecord(record, w)
+
 			count++
-			continue
+		}
+
+	}
+}
+
+//parseForTime exports for a specified time range from - to
+func parseForTime(r *csv.Reader, w *csv.Writer, tr timeRange, timeColumn int, cl intList, ignBlks int) {
+
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal("Error Reading CSV:", err)
 		}
 
 		//Records in Range
-		if recordInRange(record, column, tr) {
+		if recordInRange(record, timeColumn, tr) {
 			if ignBlks >= 0 {
 				if record[ignBlks] == "" {
 					continue
@@ -152,7 +192,40 @@ func parseForTime(r *csv.Reader, w *csv.Writer, tr timeRange, column int, header
 		}
 
 	}
+}
 
+//generateRangeMap make a map of the range values
+func generateRangeMap(rangeSpan string) (map[int64]bool, int64, int64) {
+	rm := make(map[int64]bool)
+
+	var err error
+	rl, err := generateIntList(rangeSpan)
+	if err != nil {
+		log.Fatal("Columnlist Error:", err)
+	}
+	sort.Sort(rl)
+
+	for _, v := range rl {
+		rm[v] = true
+	}
+
+	return rm, rl[0], rl[len(rl)-1]
+}
+
+//writeHeader outputs header and fields as reqd
+func writeHeader(r *csv.Reader, w *csv.Writer, cl intList) {
+	record, err := r.Read()
+	if err == io.EOF {
+		return
+	}
+	if err != nil {
+		log.Fatal("Error Reading CSV:", err)
+	}
+
+	if len(cl) > 0 {
+		record = remarshallRecord(record, cl)
+	}
+	writeRecord(record, w)
 }
 
 //remarshallRecord takes a column list and csv record and returns a new record according to the column list
@@ -212,16 +285,11 @@ func recordContains(rec []string, pats []string) bool {
 //writeRecord
 func writeRecord(record []string, w *csv.Writer) {
 	w.Write(record)
-	//	w.Flush()
-	//fmt.Println("wr error? ", w.Error())
 }
 
 //printUsage details with a custom error
 func printUsage(msg string) {
-	if msg == "" {
-		fmt.Println("Tool Usage:")
-	}
-
+	fmt.Println(msg)
 	flag.PrintDefaults()
 	os.Exit(1)
 }

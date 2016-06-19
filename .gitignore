@@ -4,3 +4,5 @@
 *.csv
 
 bash commands.sh
+
+csvtool

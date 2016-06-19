@@ -28,6 +28,8 @@ Tool Usage:
     	Use strict rules for length of a record
   -o string
     	Output CSV file
+  -r string
+    	Span index of records to export, eg 1-5 or 1,3-10 etc
   -specific int
     	Limit search to a specific column x, default all (slow) (default -1)
   -t string
