@@ -4,12 +4,16 @@ This is a tool I put together to allow manipulation of very large CSV data files
 
 The data has subsets of data so grabbing what I need by field and time makes life easier.
 
+It is also possible to retrieve a range/list of records, using -r (line number) instead of -t (time range). Using the -all will output all records according to the other parameters set.
+
 You can use the tool with Stdin and Stdout, to pipe from one tool to another or you can specify an input and or output file.
 
 ### Usage
 Command switches are as follows:
 ```go
 Tool Usage:
+  -all
+      provide all records to output
   -blanks int
     	Ignore records if this column is blank (default -1)
   -c string

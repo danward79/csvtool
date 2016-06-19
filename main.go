@@ -37,6 +37,7 @@ func main() {
 	outputFile := flag.String("o", "", "Output CSV file")
 	timeSpan := flag.String("t", "", "Span of time records, eg 10:00:00-16:00:00")
 	recordSpan := flag.String("r", "", "Span index of records to export, eg 1-5 or 1,3-10 etc")
+	allRecords := flag.Bool("all", false, "provide all records to output")
 	columns := flag.String("c", "", "Which columns to export, eg 1-5 or 1,3-10 etc")
 	limitColumn := flag.Int("specific", -1, "Limit search to a specific column x, default all (slow)")
 	header := flag.Bool("header", false, "include header row")
@@ -102,6 +103,9 @@ func main() {
 	}
 
 	switch {
+	case *allRecords:
+		parseAll(r, w, cl, *ignoreBlanks)
+
 	case *recordSpan != "": //If a record range was specified generate a list of records to capture
 		rl, min, max := generateRangeMap(*recordSpan)
 		parseForRange(r, w, rl, min, max, cl, *ignoreBlanks)
@@ -119,6 +123,31 @@ func main() {
 
 	default:
 		printUsage("Tool Usage:")
+	}
+}
+
+//parseAll output all records
+func parseAll(r *csv.Reader, w *csv.Writer, cl intList, ignBlks int) {
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal("Error Reading CSV:", err)
+		}
+
+		if ignBlks >= 0 {
+			if record[ignBlks] == "" {
+				continue
+			}
+		}
+
+		if len(cl) > 0 {
+			record = remarshallRecord(record, cl)
+		}
+		writeRecord(record, w)
+
 	}
 }
 
